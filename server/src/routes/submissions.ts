@@ -146,6 +146,7 @@ router.post("/", async (req: Request, res: Response) => {
         studentScreenshot: evaluation.studentScreenshot,
         referenceScreenshot: evaluation.referenceScreenshot,
         visualDiffScreenshot: evaluation.visualDiffScreenshot,
+        visualDiffHeatmap: evaluation.visualDiffHeatmap,
       },
     });
   } catch (err) {

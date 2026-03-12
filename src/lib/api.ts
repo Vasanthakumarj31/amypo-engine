@@ -127,6 +127,7 @@ export interface APIEvaluationResponse {
     studentScreenshot: string;
     referenceScreenshot: string;
     visualDiffScreenshot?: string;
+    visualDiffHeatmap?: string;
   };
 }
 
