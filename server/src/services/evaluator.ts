@@ -20,6 +20,7 @@ export interface EvaluationResult {
   referenceScreenshot: string; // base64
   visualMatchPercent: number;
   visualDiffScreenshot?: string;
+  visualDiffHeatmap?: string; // base64 – student image with heat-overlay baked in
 }
 
 interface CodeBundle {
@@ -219,7 +220,11 @@ interface DOMInfo {
 
 // ─── Visual Comparison ───────────────────────────────────────────────────────
 
-function compareScreenshots(studentBuf: Buffer, refBuf: Buffer): { matchPercent: number, diffBuffer: Buffer | null } {
+function compareScreenshots(studentBuf: Buffer, refBuf: Buffer): {
+  matchPercent: number;
+  diffBuffer: Buffer | null;
+  heatmapBuffer: Buffer | null;
+} {
   try {
     const studentPng = PNG.sync.read(studentBuf);
     const refPng = PNG.sync.read(refBuf);
@@ -250,9 +255,62 @@ function compareScreenshots(studentBuf: Buffer, refBuf: Buffer): { matchPercent:
 
     const totalPixels = width * height;
     const matchPercent = Math.round(((totalPixels - numDiffPixels) / totalPixels) * 100);
-    return { matchPercent, diffBuffer: PNG.sync.write(diff) };
+
+    // ── Generate heatmap: student image blended with heat-colored overlay ──
+    const heatmap = new PNG({ width, height });
+    const SQRT3x255 = Math.sqrt(3) * 255;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+
+        const sR = studentData[idx];
+        const sG = studentData[idx + 1];
+        const sB = studentData[idx + 2];
+
+        const rR = refData[idx];
+        const rG = refData[idx + 1];
+        const rB = refData[idx + 2];
+
+        // Normalised colour distance 0-1
+        const dist = Math.sqrt(
+          (sR - rR) ** 2 + (sG - rG) ** 2 + (sB - rB) ** 2
+        ) / SQRT3x255;
+
+        // Map distance → heatmap colour + blend alpha
+        let hR: number, hG: number, hB: number, alpha: number;
+
+        if (dist < 0.05) {
+          // Near-match → subtle green tint
+          hR = 0;   hG = 200; hB = 0;   alpha = 0.12;
+        } else if (dist < 0.20) {
+          // Small diff → yellow
+          const t = (dist - 0.05) / 0.15;
+          hR = 255; hG = 255; hB = 0;   alpha = 0.18 + t * 0.25;
+        } else if (dist < 0.50) {
+          // Moderate diff → orange
+          const t = (dist - 0.20) / 0.30;
+          hR = 255; hG = Math.round(200 * (1 - t)); hB = 0; alpha = 0.40 + t * 0.25;
+        } else {
+          // Large diff → red
+          hR = 255; hG = 0;   hB = 0;   alpha = 0.65 + Math.min(dist, 1) * 0.20;
+        }
+
+        // Blend student pixel with heat colour
+        heatmap.data[idx]     = Math.round(sR * (1 - alpha) + hR * alpha);
+        heatmap.data[idx + 1] = Math.round(sG * (1 - alpha) + hG * alpha);
+        heatmap.data[idx + 2] = Math.round(sB * (1 - alpha) + hB * alpha);
+        heatmap.data[idx + 3] = 255; // fully opaque
+      }
+    }
+
+    return {
+      matchPercent,
+      diffBuffer: PNG.sync.write(diff),
+      heatmapBuffer: PNG.sync.write(heatmap),
+    };
   } catch {
-    return { matchPercent: 0, diffBuffer: null };
+    return { matchPercent: 0, diffBuffer: null, heatmapBuffer: null };
   }
 }
 
@@ -636,12 +694,15 @@ export async function evaluateSubmission(
   let visualMatchPercent = 0;
   let visualDiffScreenshotBuf: Buffer | null = null;
 
+  let visualDiffHeatmapBuf: Buffer | null = null;
+
   if (referenceImageBuffer) {
     // Use trainer's uploaded image directly — no need to render reference code
     referenceScreenshotBuf = referenceImageBuffer;
     const cmp = compareScreenshots(studentResult.screenshot, referenceScreenshotBuf);
     visualMatchPercent = cmp.matchPercent;
     visualDiffScreenshotBuf = cmp.diffBuffer;
+    visualDiffHeatmapBuf = cmp.heatmapBuffer;
   } else if (referenceCode && (referenceCode.html || referenceCode.css || referenceCode.js)) {
     // Fall back: render reference HTML/CSS/JS and compare
     referenceResult = await renderAndCapture(referenceCode);
@@ -649,6 +710,7 @@ export async function evaluateSubmission(
     const cmp = compareScreenshots(studentResult.screenshot, referenceScreenshotBuf);
     visualMatchPercent = cmp.matchPercent;
     visualDiffScreenshotBuf = cmp.diffBuffer;
+    visualDiffHeatmapBuf = cmp.heatmapBuffer;
   }
 
   const hasReference = referenceScreenshotBuf !== null;
@@ -709,5 +771,6 @@ export async function evaluateSubmission(
     referenceScreenshot: referenceScreenshotBuf?.toString("base64") ?? "",
     visualMatchPercent,
     visualDiffScreenshot: visualDiffScreenshotBuf?.toString("base64") ?? "",
+    visualDiffHeatmap: visualDiffHeatmapBuf?.toString("base64") ?? "",
   };
 }

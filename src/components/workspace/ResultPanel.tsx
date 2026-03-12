@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, MessageSquare, Loader2, ImageIcon, Camera, Eye } from "lucide-react";
+import { CheckCircle2, XCircle, MessageSquare, Loader2, ImageIcon, Camera, Eye, Flame } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useState } from "react";
 import type { APITestResult } from "@/lib/api";
@@ -12,6 +12,7 @@ export interface EvaluationData {
   studentScreenshot: string;
   referenceScreenshot: string;
   visualDiffScreenshot?: string;
+  visualDiffHeatmap?: string;
 }
 
 interface ResultPanelProps {
@@ -21,7 +22,8 @@ interface ResultPanelProps {
 }
 
 const ResultPanel = ({ submitted, evaluating, evaluation }: ResultPanelProps) => {
-  const [showDiff, setShowDiff] = useState(false);
+  type DiffView = "original" | "heatmap" | "diff";
+  const [diffView, setDiffView] = useState<DiffView>("original");
 
   if (!submitted) {
     return (
@@ -53,7 +55,7 @@ const ResultPanel = ({ submitted, evaluating, evaluation }: ResultPanelProps) =>
     );
   }
 
-  const { score, testResults, feedback, visualMatchPercent, studentScreenshot, referenceScreenshot } = evaluation;
+  const { score, testResults, feedback, visualMatchPercent, studentScreenshot, referenceScreenshot, visualDiffHeatmap } = evaluation;
   const passed = testResults.filter((t) => t.passed).length;
   const failed = testResults.filter((t) => !t.passed).length;
 
@@ -106,30 +108,85 @@ const ResultPanel = ({ submitted, evaluating, evaluation }: ResultPanelProps) =>
                   <Camera className="h-2.5 w-2.5" />
                   Your Output
                 </div>
-                {evaluation.visualDiffScreenshot && (
-                  <button
-                    onClick={() => setShowDiff(!showDiff)}
-                    className="flex items-center gap-1 hover:text-foreground hover:bg-secondary rounded px-1 -mx-1 transition-colors z-10"
-                  >
-                    <Eye className="h-2.5 w-2.5" />
-                    {showDiff ? "Hide Diff" : "Show Diff"}
-                  </button>
+                {(visualDiffHeatmap || evaluation.visualDiffScreenshot) && (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => setDiffView("original")}
+                      className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-colors ${
+                        diffView === "original" ? "bg-secondary text-foreground" : "hover:text-foreground hover:bg-secondary/50"
+                      }`}
+                    >
+                      <Eye className="h-2.5 w-2.5" />
+                      Original
+                    </button>
+                    {visualDiffHeatmap && (
+                      <button
+                        onClick={() => setDiffView("heatmap")}
+                        className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-colors ${
+                          diffView === "heatmap" ? "bg-secondary text-foreground" : "hover:text-foreground hover:bg-secondary/50"
+                        }`}
+                      >
+                        <Flame className="h-2.5 w-2.5" />
+                        Heatmap
+                      </button>
+                    )}
+                    {evaluation.visualDiffScreenshot && (
+                      <button
+                        onClick={() => setDiffView("diff")}
+                        className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-colors ${
+                          diffView === "diff" ? "bg-secondary text-foreground" : "hover:text-foreground hover:bg-secondary/50"
+                        }`}
+                      >
+                        <Eye className="h-2.5 w-2.5" />
+                        Raw Diff
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="relative">
-                <img
-                  src={`data:image/png;base64,${studentScreenshot}`}
-                  alt="Student output"
-                  className="w-full object-contain"
-                />
-                {showDiff && evaluation.visualDiffScreenshot && (
+                {diffView === "heatmap" && visualDiffHeatmap ? (
+                  <img
+                    src={`data:image/png;base64,${visualDiffHeatmap}`}
+                    alt="Visual diff heatmap"
+                    className="w-full object-contain"
+                  />
+                ) : diffView === "diff" && evaluation.visualDiffScreenshot ? (
                   <img
                     src={`data:image/png;base64,${evaluation.visualDiffScreenshot}`}
-                    alt="Diff Heatmap"
-                    className="absolute inset-0 w-full h-full object-contain"
+                    alt="Raw pixel diff"
+                    className="w-full object-contain"
+                  />
+                ) : (
+                  <img
+                    src={`data:image/png;base64,${studentScreenshot}`}
+                    alt="Student output"
+                    className="w-full object-contain"
                   />
                 )}
               </div>
+              {/* Heatmap legend */}
+              {diffView === "heatmap" && visualDiffHeatmap && (
+                <div className="flex items-center justify-center gap-3 px-2 py-1.5 bg-secondary/20 border-t border-border">
+                  <span className="text-[9px] text-muted-foreground font-medium">Diff Intensity:</span>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-4 rounded-sm" style={{ background: "#00c800" }} />
+                    <span className="text-[9px] text-muted-foreground">Match</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-4 rounded-sm" style={{ background: "#ffff00" }} />
+                    <span className="text-[9px] text-muted-foreground">Low</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-4 rounded-sm" style={{ background: "#ffa500" }} />
+                    <span className="text-[9px] text-muted-foreground">Medium</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-4 rounded-sm" style={{ background: "#ff0000" }} />
+                    <span className="text-[9px] text-muted-foreground">High</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {referenceScreenshot && (
