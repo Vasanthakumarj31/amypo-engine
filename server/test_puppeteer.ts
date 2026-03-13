@@ -10,8 +10,9 @@ async function main() {
             "Test"
         );
         console.log("Success:", result.score);
-    } catch (err: any) {
-        fs.writeFileSync('test_error.json', JSON.stringify({message: err.message, stack: err.stack}, null, 2));
+    } catch (err: unknown) {
+        const errObj = err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) };
+        fs.writeFileSync('test_error.json', JSON.stringify(errObj, null, 2));
     } finally {
         await closeBrowser();
     }

@@ -108,7 +108,7 @@ async function renderAndCapture(
     // Extract DOM information
     const domInfo = await page.evaluate(() => {
       const allElements = document.body.querySelectorAll("*");
-      const elements = Array.from(allElements).map((el: any) => {
+      const elements = Array.from(allElements).map((el: Element) => {
         const computed = window.getComputedStyle(el);
         return {
           tag: el.tagName.toLowerCase(),
@@ -119,7 +119,7 @@ async function renderAndCapture(
           attributes: (() => {
             const attrs: Record<string, string> = {};
             for (const attr of Array.from(el.attributes)) {
-              attrs[(attr as any).name] = (attr as any).value;
+              attrs[(attr as Attr).name] = (attr as Attr).value;
             }
             return attrs;
           })(),
@@ -182,9 +182,9 @@ async function renderAndCapture(
   }) as unknown as DOMInfo;
 
     return { screenshot, domInfo, consoleMessages, errors };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Error in renderAndCapture:", err);
-    throw new Error(`Puppeteer error: ${err.message}`);
+    throw new Error(`Puppeteer error: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     if (page && !page.isClosed()) {
       await page.close();
