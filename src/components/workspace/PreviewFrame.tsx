@@ -19,7 +19,7 @@ const PreviewFrame = ({ html, css, js }: PreviewFrameProps) => {
 </head>
 <body>
 ${html}
-<script>${js}<\/script>
+<script>${js}<${"/"}script>
 </body>
 </html>`;
 
